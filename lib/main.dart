@@ -12,7 +12,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Esemka News',
+      title: 'Esemka 40 News',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         fontFamily: 'System', 
@@ -87,7 +87,7 @@ class _SplashScreenState extends State<SplashScreen> {
             const SizedBox(height: 30),
             
             const Text(
-              "Esemka News",
+              "Esemka 40 News",
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
@@ -98,7 +98,7 @@ class _SplashScreenState extends State<SplashScreen> {
             const SizedBox(height: 10),
             
             Text(
-              "Berita Terkini di Ujung Jari",
+              "Berita di Ujung Jari",
               style: TextStyle(
                 fontSize: 16,
                 color: Colors.white.withOpacity(0.8),

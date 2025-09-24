@@ -100,6 +100,7 @@ class _LoginPageState extends State<LoginPage> {
         await prefs.setBool('is_logged_in', true);
         await prefs.setString('user_email', email);
         await prefs.setString('user_name', result['user']['name']);
+        await prefs.setString('user_role', result['user']['role'] ?? 'user');
         await prefs.setInt('user_id', result['user']['id']);
  
         if (_rememberMe) {
@@ -112,9 +113,13 @@ class _LoginPageState extends State<LoginPage> {
           await prefs.remove('saved_password');
         }
 
+        String welcomeMessage = result['user']['role'] == 'admin' 
+            ? 'Selamat datang Admin, ${result['user']['name']}!'
+            : 'Selamat datang, ${result['user']['name']}!';
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Selamat datang, ${result['user']['name']}!'),
+            content: Text(welcomeMessage),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
@@ -147,6 +152,43 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  void _showAdminLoginHint() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Login Admin'),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Untuk login sebagai admin:'),
+              SizedBox(height: 8),
+              Text('Email: admin40@gmail.com', 
+                style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('Password: jayaraya40', 
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Tutup'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                emailController.text = 'admin40@gmail.com';
+                passwordController.text = 'jayaraya40';
+              },
+              child: const Text('Isi Otomatis'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -160,27 +202,31 @@ class _LoginPageState extends State<LoginPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 60),
+                const SizedBox(height: 40),
                  
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.blue[50],
+                    gradient: LinearGradient(
+                      colors: [Colors.blue[400]!, Colors.blue[600]!],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    Icons.newspaper,
+                  child: const Icon(
+                    Icons.school,
                     size: 64,
-                    color: Colors.blue[600],
+                    color: Colors.white,
                   ),
                 ),
                 
                 const SizedBox(height: 32),
                 
                 const Text(
-                  "Selamat Datang",
+                  "SMKN 40 News",
                   style: TextStyle(
-                    fontSize: 28,
+                    fontSize: 32,
                     fontWeight: FontWeight.bold,
                     color: Colors.black87,
                   ),
@@ -208,6 +254,12 @@ class _LoginPageState extends State<LoginPage> {
                     labelText: "Email",
                     hintText: "Masukkan alamat email",
                     prefixIcon: const Icon(Icons.email_outlined),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.admin_panel_settings, 
+                        color: Colors.grey),
+                      onPressed: _showAdminLoginHint,
+                      tooltip: 'Info Login Admin',
+                    ),
                     filled: true,
                     fillColor: Colors.grey[100],
                     contentPadding: const EdgeInsets.symmetric(
@@ -293,7 +345,7 @@ class _LoginPageState extends State<LoginPage> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _login,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black87,
+                      backgroundColor: Colors.blue[600],
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30),
@@ -316,6 +368,45 @@ class _LoginPageState extends State<LoginPage> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
+                  ),
+                ),
+                
+                const SizedBox(height: 16),
+
+                // Admin login info
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue[200]!),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.info_outline, 
+                            color: Colors.blue[600], size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Login Admin',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tap ikon admin di samping kolom email untuk info login admin',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue[600],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 

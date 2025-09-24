@@ -1,10 +1,12 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_application/admin-page.dart';
+import 'package:flutter_application/user-profil.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'database_helper.dart';
 import 'Like.dart';
-import 'profil.dart';
+import 'user-profil.dart';
 import 'berita.dart';
+import 'admin-page.dart';
 
 class beranda extends StatefulWidget {
   const beranda({Key? key}) : super(key: key);
@@ -14,37 +16,52 @@ class beranda extends StatefulWidget {
 }
 
 class _berandaState extends State<beranda> {
-  List articles = [];
-  List filteredArticles = [];
+  List<Map<String, dynamic>> articles = [];
+  List<Map<String, dynamic>> filteredArticles = [];
   bool isLoading = true;
-
   bool _showSearch = false;
+  String userRole = 'user';
   final TextEditingController _searchController = TextEditingController();
+  final DatabaseHelper _databaseHelper = DatabaseHelper();
 
   @override
   void initState() {
     super.initState();
+    _loadUserRole();
     fetchArticles();
+  }
+
+  Future<void> _loadUserRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userRole = prefs.getString('user_role') ?? 'user';
+    });
   }
 
   Future<void> fetchArticles() async {
     try {
-      final url = Uri.parse(
-        "https://gnews.io/api/v4/search?q=indonesia&lang=id&country=id&max=10&apikey=288881761b7851043da400a133de1b7c",
-      );
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        setState(() {
-          articles = (data["articles"] as List?) ?? [];
-          filteredArticles = articles;
-          isLoading = false;
-        });
-      } else {
-        debugPrint("Error: ${response.statusCode}");
-        setState(() => isLoading = false);
-      }
+      setState(() => isLoading = true);
+      
+      final newsData = await _databaseHelper.getAllNews();
+      
+      setState(() {
+        articles = newsData.map((news) => {
+          'id': news['id'],
+          'title': news['title'],
+          'description': news['content'].toString().length > 150 
+              ? news['content'].toString().substring(0, 150) + '...'
+              : news['content'],
+          'content': news['content'],
+          'image': news['image'] ?? 'https://via.placeholder.com/400x200?text=SMKN+40+Jakarta',
+          'author': news['author'],
+          'category': news['category'],
+          'publishedAt': news['created_at'],
+          'source': {'name': 'SMKN 40 Jakarta'}
+        }).toList();
+        
+        filteredArticles = articles;
+        isLoading = false;
+      });
     } catch (e) {
       debugPrint("Error: $e");
       setState(() => isLoading = false);
@@ -52,22 +69,23 @@ class _berandaState extends State<beranda> {
   }
 
   void _filterArticles(String query) {
+    if (query.isEmpty) {
+      setState(() {
+        filteredArticles = articles;
+      });
+      return;
+    }
+
     final hasil = articles.where((article) {
       final title = (article["title"] ?? "").toLowerCase();
-      return title.contains(query.toLowerCase());
+      final content = (article["description"] ?? "").toLowerCase();
+      return title.contains(query.toLowerCase()) || 
+             content.contains(query.toLowerCase());
     }).toList();
 
     setState(() {
       filteredArticles = hasil;
     });
-  }
-
-  // ignore: unused_element
-  Future<void> _launchUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw Exception("Tidak bisa membuka $url");
-    }
   }
 
   void _onItemTapped(int index) {
@@ -80,7 +98,7 @@ class _berandaState extends State<beranda> {
     } else if (index == 2) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const ProfilPage()),
+        MaterialPageRoute(builder: (context) => const UserProfilPage()),
       );
     }
   }
@@ -92,26 +110,49 @@ class _berandaState extends State<beranda> {
     );
   }
 
+  void _navigateToAdmin() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AdminDashboard()),
+    );
+  }
+
+  String _formatDate(String? dateString) {
+    if (dateString == null) return '';
+    try {
+      final date = DateTime.parse(dateString);
+      final months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+        'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+      ];
+      return '${date.day} ${months[date.month - 1]} ${date.year}';
+    } catch (e) {
+      return dateString.substring(0, 10);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.blue[600],
         elevation: 0,
         title: _showSearch
             ? TextField(
                 controller: _searchController,
                 autofocus: true,
+                style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
                   hintText: "Cari berita...",
+                  hintStyle: TextStyle(color: Colors.white70),
                   border: InputBorder.none,
                 ),
                 onChanged: _filterArticles,
               )
             : const Text(
-                "Berita Terkini",
+                "SMKN 40 News",
                 style: TextStyle(
-                  color: Colors.black,
+                  color: Colors.white,
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
@@ -120,7 +161,7 @@ class _berandaState extends State<beranda> {
           IconButton(
             icon: Icon(
               _showSearch ? Icons.close : Icons.search,
-              color: Colors.grey,
+              color: Colors.white,
             ),
             onPressed: () {
               setState(() {
@@ -132,103 +173,224 @@ class _berandaState extends State<beranda> {
               });
             },
           ),
+          if (userRole == 'admin')
+            IconButton(
+              icon: const Icon(
+                Icons.admin_panel_settings,
+                color: Colors.white,
+              ),
+              onPressed: _navigateToAdmin,
+            ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : filteredArticles.isEmpty
-            ? const Center(child: Text("Tidak ada berita"))
-            : ListView.builder(
-                itemCount: filteredArticles.length,
-                itemBuilder: (context, index) {
-                  final article = filteredArticles[index];
-                  return Card(
-                    margin: const EdgeInsets.symmetric(vertical: 8),
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+      body: RefreshIndicator(
+        onRefresh: fetchArticles,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.blue[50]!, Colors.white],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.blue[600]!, Colors.blue[800]!],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    child: InkWell(
-                      onTap: () => _navigateToDetail(article),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                article["image"] ??
-                                    "https://via.placeholder.com/150",
-                                width: 120,
-                                height: 100,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    article["title"] ?? "No Title",
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    article["source"]?["name"] ?? "Unknown",
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.black54,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    article["publishedAt"]
-                                            ?.toString()
-                                            .substring(0, 10) ??
-                                        "",
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  const Text(
-                                    "Ketuk untuk baca detail",
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.blue,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blue.withOpacity(0.3),
+                        spreadRadius: 0,
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Berita Terkini",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "SMK Negeri 40 Jakarta",
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                Expanded(
+                  child: isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : filteredArticles.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.article_outlined,
+                                size: 64,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _searchController.text.isNotEmpty
+                                    ? "Tidak ada berita yang ditemukan"
+                                    : "Belum ada berita",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: filteredArticles.length,
+                          itemBuilder: (context, index) {
+                            final article = filteredArticles[index];
+                            return Card(
+                              margin: const EdgeInsets.symmetric(vertical: 8),
+                              elevation: 3,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: InkWell(
+                                onTap: () => _navigateToDetail(article),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.network(
+                                          article["image"] ??
+                                              "https://via.placeholder.com/150?text=SMKN+40",
+                                          width: 120,
+                                          height: 100,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return Container(
+                                              width: 120,
+                                              height: 100,
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue[100],
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Icon(
+                                                Icons.school,
+                                                size: 40,
+                                                color: Colors.blue[300],
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              article["title"] ?? "No Title",
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              article["description"] ?? "",
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.blue[100],
+                                                    borderRadius: BorderRadius.circular(12),
+                                                  ),
+                                                  child: Text(
+                                                    article["category"] ?? "umum",
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.blue[700],
+                                                      fontWeight: FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  _formatDate(article["publishedAt"]),
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey[500],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0,
         onTap: _onItemTapped,
+        selectedItemColor: Colors.blue[600],
+        unselectedItemColor: Colors.grey,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Beranda"),
           BottomNavigationBarItem(
             icon: Icon(Icons.favorite_border),
-            label: "Suka",
+            label: "Favorit",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
@@ -237,5 +399,11 @@ class _berandaState extends State<beranda> {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 }

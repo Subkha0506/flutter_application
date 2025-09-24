@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'beranda.dart';
-import 'profil.dart';
+import 'user-profil.dart';
 import 'berita.dart';
 
 class LikePage extends StatefulWidget {
@@ -104,7 +104,7 @@ class _LikePageState extends State<LikePage> {
     } else if (index == 2) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const ProfilPage()),
+        MaterialPageRoute(builder: (context) => const UserProfilPage()),
       );
     }
   }

@@ -1,24 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'dart:convert';
 import 'beranda.dart';
 import 'Like.dart';
 import 'login.dart';
 import 'database_helper.dart';
 
-class ProfilPage extends StatefulWidget {
-  const ProfilPage({Key? key}) : super(key: key);
+class UserProfilPage extends StatefulWidget {
+  const UserProfilPage({Key? key}) : super(key: key);
 
   @override
-  State<ProfilPage> createState() => _ProfilPageState();
+  State<UserProfilPage> createState() => _UserProfilPageState();
 }
 
-class _ProfilPageState extends State<ProfilPage> {
+
+
+class _UserProfilPageState extends State<UserProfilPage> {
   String userName = "User";
   String userEmail = "";
+  String userProfileImage = "";
   int userId = 0;
   bool isLoading = true;
 
   final DatabaseHelper _databaseHelper = DatabaseHelper();
+  final ImagePicker _picker = ImagePicker();
+  String? _selectedImagePath;
 
   @override
   void initState() {
@@ -29,17 +37,26 @@ class _ProfilPageState extends State<ProfilPage> {
   Future<void> _loadUserData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final email = prefs.getString('user_email') ?? '';
       
-      setState(() {
-        userName = prefs.getString('user_name') ?? 'User';
-        userEmail = prefs.getString('user_email') ?? '';
-        userId = prefs.getInt('user_id') ?? 0;
-        isLoading = false;
-      });
+      if (email.isNotEmpty) {
+        final user = await _databaseHelper.getUserByEmail(email);
+        if (user != null) {
+          setState(() {
+            userName = user['name'] ?? 'User';
+            userEmail = user['email'] ?? '';
+            userProfileImage = user['profile_image'] ?? '';
+            userId = user['id'] ?? 0;
+            isLoading = false;
+          });
+        } else {
+          setState(() => isLoading = false);
+        }
+      } else {
+        setState(() => isLoading = false);
+      }
     } catch (e) {
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
       print('Error loading user data: $e');
     }
   }
@@ -144,6 +161,183 @@ class _ProfilPageState extends State<ProfilPage> {
     );
   }
 
+  Future<void> _pickImageFromGallery() async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+        maxWidth: 800,
+        maxHeight: 800,
+      );
+      
+      if (image != null) {
+        setState(() {
+          _selectedImagePath = image.path;
+        });
+        
+        final bytes = await File(image.path).readAsBytes();
+        final base64Image = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        
+        await _updateProfileImage(base64Image);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error accessing gallery: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickImageFromCamera() async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 80,
+        maxWidth: 800,
+        maxHeight: 800,
+      );
+      
+      if (image != null) {
+        setState(() {
+          _selectedImagePath = image.path;
+        });
+        
+        final bytes = await File(image.path).readAsBytes();
+        final base64Image = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        
+        await _updateProfileImage(base64Image);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error accessing camera: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showImageSourceDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Pilih Sumber Foto'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.blue),
+                title: const Text('Galeri'),
+                subtitle: const Text('Pilih dari galeri foto'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImageFromGallery();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Colors.green),
+                title: const Text('Kamera'),
+                subtitle: const Text('Ambil foto baru'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImageFromCamera();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.link, color: Colors.orange),
+                title: const Text('URL'),
+                subtitle: const Text('Masukkan link foto'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showChangeProfileImageDialog();
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+  void _showChangeProfileImageDialog() {
+  final TextEditingController imageController =
+      TextEditingController(text: userProfileImage);
+
+  showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: const Text('Ubah Foto Profil'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (userProfileImage.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(50),
+                  child: Image.network(
+                    userProfileImage,
+                    width: 100,
+                    height: 100,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.person, size: 50, color: Colors.grey),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            TextField(
+              controller: imageController,
+              decoration: const InputDecoration(
+                labelText: 'URL Foto Profil',
+                hintText: 'https://example.com/photo.jpg',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Masukkan URL gambar untuk foto profil Anda',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () {
+              _updateProfileImage(imageController.text);
+              Navigator.of(context).pop();
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+
   Future<void> _updateProfile(String newName, String newEmail) async {
     if (newName.isEmpty || newEmail.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -196,6 +390,73 @@ class _ProfilPageState extends State<ProfilPage> {
     }
   }
 
+  Widget _buildProfileImage() {
+  if (userProfileImage.isNotEmpty) {
+    if (userProfileImage.startsWith('data:image')) {
+      try {
+        final base64Str = userProfileImage.split(',').last;
+        final bytes = base64Decode(base64Str);
+        return Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return const Icon(Icons.person, size: 60, color: Colors.white);
+          },
+        );
+      } catch (e) {
+        return const Icon(Icons.person, size: 60, color: Colors.white);
+      }
+    }
+
+    return Image.network(
+      userProfileImage,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return const Icon(Icons.person, size: 60, color: Colors.white);
+      },
+    );
+  }
+
+  return const Icon(Icons.person, size: 60, color: Colors.white);
+}
+
+
+  Future<void> _updateProfileImage(String imageUrl) async {
+    try {
+      final success = await _databaseHelper.updateUserProfileImage(
+        userId: userId,
+        profileImage: imageUrl,
+      );
+
+      if (success) {
+        setState(() {
+          userProfileImage = imageUrl;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Foto profil berhasil diperbarui'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal memperbarui foto profil'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Terjadi kesalahan'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
@@ -207,17 +468,18 @@ class _ProfilPageState extends State<ProfilPage> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.blue[600],
         elevation: 0,
         title: const Text(
-          "Esemka News",
+          "Profil Saya",
           style: TextStyle(
-            color: Colors.black,
+            color: Colors.white,
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
         ),
         centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -241,32 +503,45 @@ class _ProfilPageState extends State<ProfilPage> {
                 ),
                 child: Column(
                   children: [
-                    Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          colors: [Colors.blue[300]!, Colors.blue[500]!],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                    Stack(
+                      children: [
+                        Container(
+                          width: 120,
+                          height: 120,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [Colors.blue[300]!, Colors.blue[600]!],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                          ),
+                          child: ClipOval(
+                            child: _buildProfileImage(),
+                          ),
                         ),
-                      ),
-                      child: ClipOval(
-                        child: Image.asset(
-                          "assets/images/profil.png",
-                          width: 100,
-                          height: 100,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Icon(
-                              Icons.person,
-                              size: 50,
-                              color: Colors.white,
-                            );
-                          },
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: _showImageSourceDialog,
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: Colors.blue[600],
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: const Icon(
+                                Icons.camera_alt,
+                                size: 20,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
 
                     const SizedBox(height: 16),
@@ -287,6 +562,24 @@ class _ProfilPageState extends State<ProfilPage> {
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.grey[600],
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        "Siswa SMKN 40",
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.blue[700],
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
 
@@ -375,6 +668,16 @@ class _ProfilPageState extends State<ProfilPage> {
 
               _buildMenuItem(
                 context: context,
+                icon: Icons.photo,
+                title: "Foto Profil",
+                subtitle: "Ubah foto profil Anda",
+                onTap: _showImageSourceDialog,
+              ),
+
+              const SizedBox(height: 12),
+
+              _buildMenuItem(
+                context: context,
                 icon: Icons.notifications,
                 title: "Notifikasi",
                 subtitle: "Atur preferensi notifikasi",
@@ -455,7 +758,7 @@ class _ProfilPageState extends State<ProfilPage> {
         unselectedItemColor: Colors.grey,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Beranda"),
-          BottomNavigationBarItem(icon: Icon(Icons.favorite), label: "Suka"),
+          BottomNavigationBarItem(icon: Icon(Icons.favorite), label: "Favorit"),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profil"),
         ],
       ),
@@ -545,3 +848,5 @@ class _ProfilPageState extends State<ProfilPage> {
     );
   }
 }
+
+
